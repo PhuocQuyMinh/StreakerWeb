@@ -170,6 +170,38 @@ function listenToUserGoals(uid) {
             const goalData = goalSnapshot.data();
             const goalId = goalSnapshot.id;
 
+            // NEW: Create the button as a real JavaScript element so we can listen for clicks
+            // 1. Get today's date right away so we can use it for the UI and the database
+            const today = new Date().toISOString().split('T')[0];
+
+            // 2. THE STREAK BREAKER LOGIC
+            // Check if they have a last check-in date, AND it's not today
+            if (goalData.lastCheckInDate && goalData.lastCheckInDate !== today) {
+                // Convert the string dates into real JavaScript Date objects to do math
+                const todayDate = new Date(today);
+                const lastCheckInDate = new Date(goalData.lastCheckInDate);
+
+                // Calculate the difference in milliseconds, then convert to days
+                const diffTime = todayDate - lastCheckInDate;
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                // If they missed more than 1 day, AND their streak is greater than 0
+                if (diffDays > 1 && goalData.currentStreak > 0) {
+                    console.log(`Streak broken for goal: ${goalData.title}`);
+
+                    // Reset the streak to 0 in the database
+                    const goalRef = doc(db, "goals", goalId);
+                    updateDoc(goalRef, {
+                        currentStreak: 0
+                    });
+
+                    // We use 'return' here to stop drawing this specific card. 
+                    // Why? Because updateDoc will instantly trigger onSnapshot again 
+                    // with the new streak=0 data, and it will draw the correct card automatically!
+                    return;
+                }
+            }
+
             const goalCard = document.createElement('div');
             goalCard.style.border = "1px solid #ccc";
             goalCard.style.borderRadius = "8px";
@@ -193,9 +225,7 @@ function listenToUserGoals(uid) {
                 ${subtasksHTML}
             `;
 
-            // NEW: Create the button as a real JavaScript element so we can listen for clicks
-            // 1. Get today's date right away so we can use it for the UI and the database
-            const today = new Date().toISOString().split('T')[0];
+
 
             // 2. Create the button
             const checkInBtn = document.createElement('button');
