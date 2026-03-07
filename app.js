@@ -166,11 +166,10 @@ function listenToUserGoals(uid) {
         }
 
         // 3. Loop through every goal the database found
-        snapshot.forEach((doc) => {
-            const goalData = doc.data();
-            const goalId = doc.id; // The unique ID of this specific document
+        snapshot.forEach((goalSnapshot) => {
+            const goalData = goalSnapshot.data();
+            const goalId = goalSnapshot.id;
 
-            // 4. Create a visual "card" for this goal
             const goalCard = document.createElement('div');
             goalCard.style.border = "1px solid #ccc";
             goalCard.style.borderRadius = "8px";
@@ -178,8 +177,6 @@ function listenToUserGoals(uid) {
             goalCard.style.marginBottom = "15px";
             goalCard.style.backgroundColor = "#fff";
 
-            // 5. Convert the subtasks array into HTML list items
-            // We are adding checkboxes here so we can use them in the next step!
             let subtasksHTML = '';
             goalData.subtasks.forEach((task, index) => {
                 subtasksHTML += `
@@ -190,14 +187,64 @@ function listenToUserGoals(uid) {
                 `;
             });
 
-            // 6. Put all the HTML together inside the card
+            // Put the text and checkboxes into the card
             goalCard.innerHTML = `
                 <h4 style="margin-top: 0;">${goalData.title} (Streak: ${goalData.currentStreak} 🔥)</h4>
                 ${subtasksHTML}
-                <button style="margin-top: 10px; cursor: pointer;">Complete Daily Check-in</button>
             `;
 
-            // 7. Add the card to the screen
+            // NEW: Create the button as a real JavaScript element so we can listen for clicks
+            const checkInBtn = document.createElement('button');
+            checkInBtn.textContent = 'Complete Daily Check-in';
+            checkInBtn.style.marginTop = "10px";
+            checkInBtn.style.cursor = "pointer";
+
+            // NEW: The magic that happens when they click the button!
+            checkInBtn.addEventListener('click', async () => {
+                // 1. Get today's date in YYYY-MM-DD format (e.g., "2026-03-07")
+                const today = new Date().toISOString().split('T')[0];
+
+                // 2. Check which tasks the user actually checked off today
+                const completedTasks = [];
+                goalData.subtasks.forEach((task, index) => {
+                    const checkbox = document.getElementById(`${goalId}-task-${index}`);
+                    if (checkbox && checkbox.checked) {
+                        completedTasks.push(task);
+                    }
+                });
+
+                // 3. Define the path for the Daily Log (A sub-collection!)
+                // Path: goals -> [specific_goal_id] -> daily_logs -> [today's_date]
+                const dailyLogRef = doc(db, "goals", goalId, "daily_logs", today);
+
+                try {
+                    // 4. Save today's log to the database
+                    // We use setDoc so the document ID is exactly today's date
+                    await setDoc(dailyLogRef, {
+                        date: today,
+                        completed: completedTasks,
+                        totalTasks: goalData.subtasks.length,
+                        timestamp: serverTimestamp()
+                    });
+
+                    // 5. Update the main Goal to increase the streak!
+                    const goalRef = doc(db, "goals", goalId);
+                    await updateDoc(goalRef, {
+                        currentStreak: goalData.currentStreak + 1
+                    });
+
+                    alert("Check-in successful! Your daily stats were saved. 🔥");
+
+                } catch (error) {
+                    console.error("Error saving check-in:", error);
+                    alert("Failed to check in.");
+                }
+            });
+
+            // Add the button to the bottom of the card
+            goalCard.appendChild(checkInBtn);
+
+            // Add the fully built card to the screen
             goalsList.appendChild(goalCard);
         });
     });
