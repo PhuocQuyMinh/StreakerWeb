@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Streak Tracker</title>
+</head>
+
+<body>
+    <h1>My Streak Tracker</h1>
+
+    <div id="auth-section">
+        <h2>Login / Register</h2>
+        <input type="email" id="email" placeholder="Enter your email">
+        <input type="password" id="password" placeholder="Password (min 6 characters)">
+        <button id="login-btn">Login</button>
+        <button id="register-btn">Register</button>
+    </div>
+
+    <div id="app-section" style="display: none;">
+        <h2>Welcome, <span id="user-email"></span>!</h2>
+        <button id="logout-btn">Logout</button>
+        <hr>
+        <div id="create-goal-form" style="background: #f4f4f4; padding: 15px; margin-top: 20px;">
+            <h3>Create a New Goal</h3>
+            <input type="text" id="goal-title" placeholder="Goal Name (e.g., Morning Routine)">
+            <br><br>
+            <input type="text" id="goal-subtasks"
+                placeholder="Sub-tasks (comma separated, e.g., Drink water, Read 10 pages)" style="width: 300px;">
+            <br><br>
+            <button id="save-goal-btn">Save Goal</button>
+        </div>
+
+        <div id="goals-container" style="margin-top: 30px;">
+            <h3>Your Active Goals</h3>
+            <div id="goals-list">
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+
+</body>
+
+</html>
