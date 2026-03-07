@@ -194,52 +194,66 @@ function listenToUserGoals(uid) {
             `;
 
             // NEW: Create the button as a real JavaScript element so we can listen for clicks
+            // 1. Get today's date right away so we can use it for the UI and the database
+            const today = new Date().toISOString().split('T')[0];
+
+            // 2. Create the button
             const checkInBtn = document.createElement('button');
-            checkInBtn.textContent = 'Complete Daily Check-in';
             checkInBtn.style.marginTop = "10px";
-            checkInBtn.style.cursor = "pointer";
 
-            // NEW: The magic that happens when they click the button!
-            checkInBtn.addEventListener('click', async () => {
-                // 1. Get today's date in YYYY-MM-DD format (e.g., "2026-03-07")
-                const today = new Date().toISOString().split('T')[0];
+            // 3. THE LOCK: Check if they already checked in today!
+            if (goalData.lastCheckInDate === today) {
+                // They already did it! Lock the button.
+                checkInBtn.textContent = 'Done for today! ✅';
+                checkInBtn.disabled = true;
+                checkInBtn.style.cursor = "not-allowed";
+                checkInBtn.style.backgroundColor = "#d3d3d3";
+                checkInBtn.style.border = "none";
+                checkInBtn.style.padding = "8px 12px";
 
-                // 2. Check which tasks the user actually checked off today
-                const completedTasks = [];
-                goalData.subtasks.forEach((task, index) => {
-                    const checkbox = document.getElementById(`${goalId}-task-${index}`);
-                    if (checkbox && checkbox.checked) {
-                        completedTasks.push(task);
+                // Optional: You can also visually disable the checkboxes here if you want
+            } else {
+                // They haven't checked in yet. Keep the button active.
+                checkInBtn.textContent = 'Complete Daily Check-in';
+                checkInBtn.style.cursor = "pointer";
+
+                // The click event (Only active if they haven't checked in)
+                checkInBtn.addEventListener('click', async () => {
+                    const completedTasks = [];
+                    goalData.subtasks.forEach((task, index) => {
+                        const checkbox = document.getElementById(`${goalId}-task-${index}`);
+                        if (checkbox && checkbox.checked) {
+                            completedTasks.push(task);
+                        }
+                    });
+
+                    // Define the path for the Daily Log
+                    const dailyLogRef = doc(db, "goals", goalId, "daily_logs", today);
+
+                    try {
+                        // Save today's log to the sub-collection
+                        await setDoc(dailyLogRef, {
+                            date: today,
+                            completed: completedTasks,
+                            totalTasks: goalData.subtasks.length,
+                            timestamp: serverTimestamp()
+                        });
+
+                        // UPDATE THE MAIN GOAL: Increase streak AND save today's date to lock the button!
+                        const goalRef = doc(db, "goals", goalId);
+                        await updateDoc(goalRef, {
+                            currentStreak: goalData.currentStreak + 1,
+                            lastCheckInDate: today // <--- THIS IS THE MAGIC LOCK
+                        });
+
+                        alert("Check-in successful! See you tomorrow. 🔥");
+
+                    } catch (error) {
+                        console.error("Error saving check-in:", error);
+                        alert("Failed to check in.");
                     }
                 });
-
-                // 3. Define the path for the Daily Log (A sub-collection!)
-                // Path: goals -> [specific_goal_id] -> daily_logs -> [today's_date]
-                const dailyLogRef = doc(db, "goals", goalId, "daily_logs", today);
-
-                try {
-                    // 4. Save today's log to the database
-                    // We use setDoc so the document ID is exactly today's date
-                    await setDoc(dailyLogRef, {
-                        date: today,
-                        completed: completedTasks,
-                        totalTasks: goalData.subtasks.length,
-                        timestamp: serverTimestamp()
-                    });
-
-                    // 5. Update the main Goal to increase the streak!
-                    const goalRef = doc(db, "goals", goalId);
-                    await updateDoc(goalRef, {
-                        currentStreak: goalData.currentStreak + 1
-                    });
-
-                    alert("Check-in successful! Your daily stats were saved. 🔥");
-
-                } catch (error) {
-                    console.error("Error saving check-in:", error);
-                    alert("Failed to check in.");
-                }
-            });
+            }
 
             // Add the button to the bottom of the card
             goalCard.appendChild(checkInBtn);
