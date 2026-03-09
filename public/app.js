@@ -45,6 +45,25 @@ const appSection = document.getElementById('app-section');
 const userEmailSpan = document.getElementById('user-email');
 
 const streakSummaryList = document.getElementById('streak-summary-list');
+const dailyProgressText = document.getElementById('daily-progress');
+
+// Add these with your other variables at the top
+const historyModal = document.getElementById('history-modal');
+const closeModal = document.getElementById('close-modal');
+const modalTitle = document.getElementById('modal-title');
+const modalContent = document.getElementById('modal-content');
+
+// Logic to close the modal when the "X" is clicked
+closeModal.addEventListener('click', () => {
+    historyModal.style.display = "none";
+});
+
+// Logic to close the modal if they click outside the white box
+window.addEventListener('click', (event) => {
+    if (event.target === historyModal) {
+        historyModal.style.display = "none";
+    }
+});
 
 // 5. Register Function
 registerBtn.addEventListener('click', () => {
@@ -164,13 +183,19 @@ function listenToUserGoals(uid) {
         // Clear out the old list on the screen so we don't get duplicates
         goalsList.innerHTML = '';
         streakSummaryList.innerHTML = '';
+        dailyProgressText.textContent = '';
 
         // If they have no goals yet
         if (snapshot.empty) {
             goalsList.innerHTML = '<p>You have no goals yet. Create one above!</p>';
             streakSummaryList.innerHTML = '<li>No active streaks yet.</li>';
+            dailyProgressText.textContent = 'Daily Progress: 0 / 0';
             return;
         }
+
+        // NEW: Set up our counters
+        const totalGoals = snapshot.size; // Firebase tells us exactly how many goals there are!
+        let completedTodayCount = 0;
 
         // 3. Loop through every goal the database found
         snapshot.forEach((goalSnapshot) => {
@@ -180,6 +205,11 @@ function listenToUserGoals(uid) {
             // NEW: Create the button as a real JavaScript element so we can listen for clicks
             // 1. Get today's date right away so we can use it for the UI and the database
             const today = new Date().toISOString().split('T')[0];
+
+            // NEW: If they already checked in today, increase our counter!
+            if (goalData.lastCheckInDate === today) {
+                completedTodayCount++;
+            }
 
             // 2. THE STREAK BREAKER LOGIC
             // Check if they have a last check-in date, AND it's not today
@@ -209,75 +239,102 @@ function listenToUserGoals(uid) {
                 }
             }
 
+            // 1. UPDATED: Create the summary item and make it a clickable link
             const summaryItem = document.createElement('li');
-            summaryItem.style.marginBottom = "5px";
-            summaryItem.innerHTML = `<strong>${goalData.title}</strong>: ${goalData.currentStreak} 🔥`;
+            summaryItem.style.marginBottom = "8px";
+            summaryItem.innerHTML = `<span style="cursor: pointer; color: #0056b3; text-decoration: underline;"><strong>${goalData.title}</strong></span>: ${goalData.currentStreak}`;
+
+            // 2. NEW: When they click this specific summary item, open the popup!
+            summaryItem.addEventListener('click', async () => {
+                // Show the modal and set the title
+                historyModal.style.display = "block";
+                modalTitle.textContent = `History: ${goalData.title}`;
+                modalContent.innerHTML = "<em>Loading your history...</em>";
+
+                try {
+                    // Fetch the history from Firestore (Same logic as before!)
+                    const logsRef = collection(db, "goals", goalId, "daily_logs");
+                    const qLogs = query(logsRef, orderBy("date", "desc"));
+                    const logsSnapshot = await getDocs(qLogs);
+
+                    if (logsSnapshot.empty) {
+                        modalContent.innerHTML = "<p><em>No check-ins yet. Complete one today!</em></p>";
+                        return;
+                    }
+
+                    // Build the list
+                    let historyHTML = "<ul style='margin:0; padding-left: 20px; font-size: 16px; line-height: 1.6;'>";
+                    logsSnapshot.forEach((logDoc) => {
+                        const logData = logDoc.data();
+                        historyHTML += `<li><strong>${logData.date}</strong>: ${logData.completed.length}/${logData.totalTasks} tasks completed</li>`;
+                    });
+                    historyHTML += "</ul>";
+
+                    // Inject it into the popup
+                    modalContent.innerHTML = historyHTML;
+
+                } catch (error) {
+                    console.error("Error fetching history:", error);
+                    modalContent.innerHTML = "<em>Error loading history.</em>";
+                }
+            });
+
+            // Add it to the top dashboard
             streakSummaryList.appendChild(summaryItem);
 
-            const goalCard = document.createElement('div');
-            goalCard.style.border = "1px solid #ccc";
-            goalCard.style.borderRadius = "8px";
-            goalCard.style.padding = "15px";
-            goalCard.style.marginBottom = "15px";
-            goalCard.style.backgroundColor = "#fff";
+            if (goalData.lastCheckInDate !== today) {
+                const goalCard = document.createElement('div');
+                goalCard.style.border = "1px solid #ccc";
+                goalCard.style.borderRadius = "8px";
+                goalCard.style.padding = "15px";
+                goalCard.style.marginBottom = "15px";
+                goalCard.style.backgroundColor = "#fff";
 
-            let subtasksHTML = '';
-            goalData.subtasks.forEach((task, index) => {
-                subtasksHTML += `
+                let subtasksHTML = '';
+                goalData.subtasks.forEach((task, index) => {
+                    subtasksHTML += `
                     <div style="margin-bottom: 5px;">
                         <input type="checkbox" id="${goalId}-task-${index}">
                         <label for="${goalId}-task-${index}">${task}</label>
                     </div>
                 `;
-            });
+                });
 
-            // We are adding a Flexbox layout to the card title area so the delete button sits on the right
-            goalCard.innerHTML = `
+                // We are adding a Flexbox layout to the card title area so the delete button sits on the right
+                goalCard.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: start;">
                     <h4 style="margin-top: 0;">${goalData.title}</h4>
                     <button id="delete-${goalId}" style="background-color: #ff4c4c; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Delete</button>
                 </div>
                 ${subtasksHTML}
-            `;
+                `;
 
-            // --- ADD THIS NEW DELETE LOGIC ---
-            const deleteBtn = goalCard.querySelector(`#delete-${goalId}`);
-            deleteBtn.addEventListener('click', async () => {
-                // Always ask for confirmation before deleting data!
-                const confirmDelete = confirm(`Are you sure you want to delete the goal: "${goalData.title}"?`);
+                // --- ADD THIS NEW DELETE LOGIC ---
+                const deleteBtn = goalCard.querySelector(`#delete-${goalId}`);
+                deleteBtn.addEventListener('click', async () => {
+                    // Always ask for confirmation before deleting data!
+                    const confirmDelete = confirm(`Are you sure you want to delete the goal: "${goalData.title}"?`);
 
-                if (confirmDelete) {
-                    try {
-                        // Point to the specific goal document and delete it
-                        const goalRef = doc(db, "goals", goalId);
-                        await deleteDoc(goalRef);
+                    if (confirmDelete) {
+                        try {
+                            // Point to the specific goal document and delete it
+                            const goalRef = doc(db, "goals", goalId);
+                            await deleteDoc(goalRef);
 
-                        // Note: Because we are using onSnapshot, we don't need to manually 
-                        // remove the HTML card. Firestore will notice it's gone and redraw the list!
-                    } catch (error) {
-                        console.error("Error deleting goal:", error);
-                        alert("Failed to delete the goal.");
+                            // Note: Because we are using onSnapshot, we don't need to manually 
+                            // remove the HTML card. Firestore will notice it's gone and redraw the list!
+                        } catch (error) {
+                            console.error("Error deleting goal:", error);
+                            alert("Failed to delete the goal.");
+                        }
                     }
-                }
-            });
-            // ---------------------------------
+                });
+                // ---------------------------------
 
-            // 2. Create the button
-            const checkInBtn = document.createElement('button');
-            checkInBtn.style.marginTop = "10px";
+                // 2. Create the button
+                const checkInBtn = document.createElement('button');
+                checkInBtn.style.marginTop = "10px";
 
-            // 3. THE LOCK: Check if they already checked in today!
-            if (goalData.lastCheckInDate === today) {
-                // They already did it! Lock the button.
-                checkInBtn.textContent = 'Done for today! ✅';
-                checkInBtn.disabled = true;
-                checkInBtn.style.cursor = "not-allowed";
-                checkInBtn.style.backgroundColor = "#d3d3d3";
-                checkInBtn.style.border = "none";
-                checkInBtn.style.padding = "8px 12px";
-
-                // Optional: You can also visually disable the checkboxes here if you want
-            } else {
                 // They haven't checked in yet. Keep the button active.
                 checkInBtn.textContent = 'Complete Daily Check-in';
                 checkInBtn.style.cursor = "pointer";
@@ -318,80 +375,24 @@ function listenToUserGoals(uid) {
                         alert("Failed to check in.");
                     }
                 });
+                goalCard.appendChild(checkInBtn);
+                // Add the fully built card to the screen
+                goalsList.appendChild(goalCard);
             }
-
-            // Add the button to the bottom of the card
-            goalCard.appendChild(checkInBtn);
-
-            // --- START HISTORY FEATURE ---
-
-            // 1. Create the History Button
-            const historyBtn = document.createElement('button');
-            historyBtn.textContent = "📊 View History";
-            historyBtn.style.marginTop = "10px";
-            historyBtn.style.marginLeft = "10px";
-            historyBtn.style.cursor = "pointer";
-
-            // 2. Create a hidden box to hold the history list
-            const historyContainer = document.createElement('div');
-            historyContainer.style.display = "none"; // Hidden by default
-            historyContainer.style.marginTop = "15px";
-            historyContainer.style.padding = "10px";
-            historyContainer.style.backgroundColor = "#f0f8ff"; // Light blue background
-            historyContainer.style.borderRadius = "5px";
-
-            // 3. Make the button toggle the history box
-            historyBtn.addEventListener('click', async () => {
-                // If the box is hidden, open it and fetch data
-                if (historyContainer.style.display === "none") {
-                    historyContainer.style.display = "block";
-                    historyContainer.innerHTML = "<em>Loading your history...</em>";
-
-                    try {
-                        // Create a query to get the daily_logs, sorted by newest date first
-                        const logsRef = collection(db, "goals", goalId, "daily_logs");
-                        const qLogs = query(logsRef, orderBy("date", "desc"));
-
-                        // Fetch the documents ONCE (no real-time listener needed here)
-                        const logsSnapshot = await getDocs(qLogs);
-
-                        if (logsSnapshot.empty) {
-                            historyContainer.innerHTML = "<em>No check-ins yet. Complete one today!</em>";
-                            return;
-                        }
-
-                        // Build an HTML list of past check-ins
-                        let historyHTML = "<h5 style='margin-top:0; margin-bottom:5px;'>Past Check-ins:</h5><ul style='margin:0; padding-left: 20px; font-size: 14px;'>";
-
-                        logsSnapshot.forEach((logDoc) => {
-                            const logData = logDoc.data();
-                            // Example output: "2026-03-08: 2/3 tasks completed"
-                            historyHTML += `<li><strong>${logData.date}</strong>: ${logData.completed.length}/${logData.totalTasks} tasks completed</li>`;
-                        });
-
-                        historyHTML += "</ul>";
-
-                        // Put the finished list onto the screen
-                        historyContainer.innerHTML = historyHTML;
-
-                    } catch (error) {
-                        console.error("Error fetching history:", error);
-                        historyContainer.innerHTML = "<em>Error loading history.</em>";
-                    }
-                } else {
-                    // If the box is already open, click it again to hide it
-                    historyContainer.style.display = "none";
-                }
-            });
-
-            // 4. Add the button and the hidden container to the goal card
-            goalCard.appendChild(historyBtn);
-            goalCard.appendChild(historyContainer);
-
-            // --- END HISTORY FEATURE ---
-
-            // Add the fully built card to the screen
-            goalsList.appendChild(goalCard);
         });
+
+        // NEW: Print the final fraction to the screen!
+        dailyProgressText.textContent = `Daily Progress: ${completedTodayCount} / ${totalGoals} goals completed`;
+
+        // --- NEW: CHECK IF ALL CAUGHT UP ---
+        // Put this RIGHT AFTER the loop finishes
+        if (goalsList.innerHTML === '') {
+            goalsList.innerHTML = `
+                <div style="text-align: center; padding: 30px; background-color: #e8f5e9; border-radius: 8px; color: #2e7d32;">
+                    <h3>🎉 All caught up!</h3>
+                    <p>You have completed all your active goals for today. Great job!</p>
+                </div>
+            `;
+        }
     });
 }
