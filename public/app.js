@@ -44,6 +44,8 @@ const authSection = document.getElementById('auth-section');
 const appSection = document.getElementById('app-section');
 const userEmailSpan = document.getElementById('user-email');
 
+const streakSummaryList = document.getElementById('streak-summary-list');
+
 // 5. Register Function
 registerBtn.addEventListener('click', () => {
     const email = emailInput.value;
@@ -161,10 +163,12 @@ function listenToUserGoals(uid) {
     unsubscribeGoals = onSnapshot(q, (snapshot) => {
         // Clear out the old list on the screen so we don't get duplicates
         goalsList.innerHTML = '';
+        streakSummaryList.innerHTML = '';
 
         // If they have no goals yet
         if (snapshot.empty) {
             goalsList.innerHTML = '<p>You have no goals yet. Create one above!</p>';
+            streakSummaryList.innerHTML = '<li>No active streaks yet.</li>';
             return;
         }
 
@@ -205,6 +209,11 @@ function listenToUserGoals(uid) {
                 }
             }
 
+            const summaryItem = document.createElement('li');
+            summaryItem.style.marginBottom = "5px";
+            summaryItem.innerHTML = `<strong>${goalData.title}</strong>: ${goalData.currentStreak} 🔥`;
+            streakSummaryList.appendChild(summaryItem);
+
             const goalCard = document.createElement('div');
             goalCard.style.border = "1px solid #ccc";
             goalCard.style.borderRadius = "8px";
@@ -225,7 +234,7 @@ function listenToUserGoals(uid) {
             // We are adding a Flexbox layout to the card title area so the delete button sits on the right
             goalCard.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: start;">
-                    <h4 style="margin-top: 0;">${goalData.title} (Streak: ${goalData.currentStreak} 🔥)</h4>
+                    <h4 style="margin-top: 0;">${goalData.title}</h4>
                     <button id="delete-${goalId}" style="background-color: #ff4c4c; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Delete</button>
                 </div>
                 ${subtasksHTML}
