@@ -9,9 +9,12 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 // Update your import line to look exactly like this:
-import { getFirestore, collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, setDoc, updateDoc }
+// Add deleteDoc to your import list
+import {
+    getFirestore, collection, addDoc, serverTimestamp, query, where,
+    onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDocs, orderBy
+}
     from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -219,13 +222,36 @@ function listenToUserGoals(uid) {
                 `;
             });
 
-            // Put the text and checkboxes into the card
+            // We are adding a Flexbox layout to the card title area so the delete button sits on the right
             goalCard.innerHTML = `
-                <h4 style="margin-top: 0;">${goalData.title} (Streak: ${goalData.currentStreak} 🔥)</h4>
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <h4 style="margin-top: 0;">${goalData.title} (Streak: ${goalData.currentStreak} 🔥)</h4>
+                    <button id="delete-${goalId}" style="background-color: #ff4c4c; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Delete</button>
+                </div>
                 ${subtasksHTML}
             `;
 
+            // --- ADD THIS NEW DELETE LOGIC ---
+            const deleteBtn = goalCard.querySelector(`#delete-${goalId}`);
+            deleteBtn.addEventListener('click', async () => {
+                // Always ask for confirmation before deleting data!
+                const confirmDelete = confirm(`Are you sure you want to delete the goal: "${goalData.title}"?`);
 
+                if (confirmDelete) {
+                    try {
+                        // Point to the specific goal document and delete it
+                        const goalRef = doc(db, "goals", goalId);
+                        await deleteDoc(goalRef);
+
+                        // Note: Because we are using onSnapshot, we don't need to manually 
+                        // remove the HTML card. Firestore will notice it's gone and redraw the list!
+                    } catch (error) {
+                        console.error("Error deleting goal:", error);
+                        alert("Failed to delete the goal.");
+                    }
+                }
+            });
+            // ---------------------------------
 
             // 2. Create the button
             const checkInBtn = document.createElement('button');
@@ -287,6 +313,73 @@ function listenToUserGoals(uid) {
 
             // Add the button to the bottom of the card
             goalCard.appendChild(checkInBtn);
+
+            // --- START HISTORY FEATURE ---
+
+            // 1. Create the History Button
+            const historyBtn = document.createElement('button');
+            historyBtn.textContent = "📊 View History";
+            historyBtn.style.marginTop = "10px";
+            historyBtn.style.marginLeft = "10px";
+            historyBtn.style.cursor = "pointer";
+
+            // 2. Create a hidden box to hold the history list
+            const historyContainer = document.createElement('div');
+            historyContainer.style.display = "none"; // Hidden by default
+            historyContainer.style.marginTop = "15px";
+            historyContainer.style.padding = "10px";
+            historyContainer.style.backgroundColor = "#f0f8ff"; // Light blue background
+            historyContainer.style.borderRadius = "5px";
+
+            // 3. Make the button toggle the history box
+            historyBtn.addEventListener('click', async () => {
+                // If the box is hidden, open it and fetch data
+                if (historyContainer.style.display === "none") {
+                    historyContainer.style.display = "block";
+                    historyContainer.innerHTML = "<em>Loading your history...</em>";
+
+                    try {
+                        // Create a query to get the daily_logs, sorted by newest date first
+                        const logsRef = collection(db, "goals", goalId, "daily_logs");
+                        const qLogs = query(logsRef, orderBy("date", "desc"));
+
+                        // Fetch the documents ONCE (no real-time listener needed here)
+                        const logsSnapshot = await getDocs(qLogs);
+
+                        if (logsSnapshot.empty) {
+                            historyContainer.innerHTML = "<em>No check-ins yet. Complete one today!</em>";
+                            return;
+                        }
+
+                        // Build an HTML list of past check-ins
+                        let historyHTML = "<h5 style='margin-top:0; margin-bottom:5px;'>Past Check-ins:</h5><ul style='margin:0; padding-left: 20px; font-size: 14px;'>";
+
+                        logsSnapshot.forEach((logDoc) => {
+                            const logData = logDoc.data();
+                            // Example output: "2026-03-08: 2/3 tasks completed"
+                            historyHTML += `<li><strong>${logData.date}</strong>: ${logData.completed.length}/${logData.totalTasks} tasks completed</li>`;
+                        });
+
+                        historyHTML += "</ul>";
+
+                        // Put the finished list onto the screen
+                        historyContainer.innerHTML = historyHTML;
+
+                    } catch (error) {
+                        console.error("Error fetching history:", error);
+                        historyContainer.innerHTML = "<em>Error loading history.</em>";
+                    }
+                } else {
+                    // If the box is already open, click it again to hide it
+                    historyContainer.style.display = "none";
+                }
+            });
+
+            // 4. Add the button and the hidden container to the goal card
+            goalCard.appendChild(historyBtn);
+            goalCard.appendChild(historyContainer);
+
+            // --- END HISTORY FEATURE ---
 
             // Add the fully built card to the screen
             goalsList.appendChild(goalCard);
